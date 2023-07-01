@@ -21,9 +21,7 @@ export default [
                {
                    title: 'ID',
                    key: 'id',
-                   sorting: {
-                       type: 'number'
-                   },
+                   sorting: true,
                    filter: {
                        type: 'number'
                    }
@@ -52,16 +50,12 @@ export default [
                {
                    title: 'Зарегистрирован',
                    key: 'created_at',
-                   sorting: {
-                       type: 'date'
-                   }
+                   sorting: true
                },
                {
                    title: 'Последнее действие',
                    key: 'updated_at',
-                   sorting: {
-                       type: 'date'
-                   }
+                   sorting: true
                }
            ],
            actions: [

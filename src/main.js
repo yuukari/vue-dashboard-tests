@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import router from './../router'
 import naive from 'naive-ui';
+import store from './store';
 import App from './App.vue'
 
 import 'vfonts/Lato.css'
@@ -18,5 +19,6 @@ if (process.env.NODE_ENV === 'development') {
 
 const app = createApp(App);
 app.use(router);
+app.use(store);
 app.use(naive);
 app.mount('#app');
