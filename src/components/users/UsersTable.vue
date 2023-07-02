@@ -5,7 +5,8 @@
         :data="rows"
         :loading="loading"
         :paginate-single-page="false"
-        max-height="600"
+        :flex-height="true"
+        min-height="600"
 
         @update-sorter="handleSortChange"
     >
@@ -33,50 +34,25 @@ import { defineComponent, watch, computed, h } from 'vue';
 import { useStore } from 'vuex';
 import useSWRV from 'swrv';
 
-// import UsersTableRowMenu from '@/components/users/UsersTableRowMenu.vue';
 import UsersTableFilters from '@/components/users/UsersTableFilters.vue';
 import UsersTableRowMenu from '@/components/users/UsersTableRowMenu.vue';
 
 const tableName = 'users';
 
-// const idColumn = reactive({ title: 'ID', key: 'id', sorter: true, sortOrder: false });
-// const columns = ref([
-//     idColumn,
-//     { title: 'E-Mail', key: 'email' },
-//     { title: 'Фамилия', key: 'last_name' },
-//     { title: 'Имя', key: 'first_name' },
-//     { title: 'Зарегистрирован', key: 'created_at' },
-//     { title: 'Последнее действие', key: 'updated_at' },
-//     {
-//         key: 'actions',
-//         render(row) {
-//             return h(UsersTableRowMenu, {
-//                 id: row.id
-//             }, { default: () => 'Действия' });
-//         }
-//     }
-// ]);
-
-// const handleSortChange = (sort) => {
-//     console.log(sort);
-//
-//     // for (const i in layoutColumns.value) {
-//     //     const layoutColumn = layoutColumns.value[i];
-//     //     if (layoutColumn.key === sort.key) {
-//     //         layoutColumns.value[i].sortOrder = sort.order;
-//     //     }
-//     // }
-//
-//     // console.log(layoutColumns.value);
-//
-//     // idColumn.sortOrder = sort.order;
-// };
-
 const registerStore = (store) => {
+    if (store.hasModule(`${tableName}Table`)) {
+        return;
+    }
+
     store.registerModule(`${tableName}Table`, {
         namespaced: true,
         state: () => ({
             layout: {},
+            sorting: {
+                key: null,
+                order: false
+            },
+            filters: {},
             rows: [],
             pagination: {
                 page: 1,
@@ -94,13 +70,75 @@ const registerStore = (store) => {
             },
 
             setPage(state, payload) {
-                state.pagination.page = payload
+                state.pagination.page = payload;
             },
             setPageSize(state, payload) {
-                state.pagination.pageSize = payload
+                state.pagination.page = 1;
+                state.pagination.pageSize = payload;
+            },
+
+            setSorting(state, payload) {
+                state.sorting = {
+                    key: payload.key,
+                    order: payload.order
+                };
+            },
+            resetSorting(state) {
+                state.sorting = {
+                    key: null,
+                    order: false
+                }
+            }
+        },
+        getters: {
+            columns(state) {
+                if (state.layout.columns === undefined) {
+                    return [];
+                }
+
+                const columns = [];
+                for (const key of Object.keys(state.layout.columns)) {
+                    const layoutColumn = state.layout.columns[key];
+                    let column = {
+                        key: layoutColumn.key,
+                        title: layoutColumn.title
+                    }
+
+                    if (layoutColumn.sorting) {
+                        column.sorter = true;
+                        column.sortOrder = state.sorting.key === layoutColumn.key ? state.sorting.order : false;
+                    }
+
+                    columns.push(column);
+                }
+
+                columns.push({
+                    key: 'actions',
+                    render(row) {
+                        return h(UsersTableRowMenu, {
+                            id: row.id
+                        }, { default: () => 'Действия' });
+                    }
+                });
+
+                return columns;
             }
         }
     });
+}
+
+const buildQueryUrl = (state) => {
+    const params = new URLSearchParams();
+
+    params.append('page', state.pagination.page.toString());
+    params.append('pageSize', state.pagination.pageSize.toString());
+
+    if (state.sorting.key !== null && state.sorting.order !== false) {
+        params.append('sortBy', state.sorting.key);
+        params.append('sortOrder', state.sorting.order);
+    }
+
+    return `/api/${tableName}?${params.toString()}`;
 }
 
 export default defineComponent({
@@ -111,45 +149,14 @@ export default defineComponent({
         const store = useStore();
         registerStore(store);
 
-        const columns = computed(() => {
-            if (store.state[`${tableName}Table`].layout.columns === undefined) {
-                return [];
-            }
-
-            const columns = [];
-
-            for (const layoutColumn of store.state[`${tableName}Table`].layout.columns) {
-                let column = {
-                    key: layoutColumn.key,
-                    title: layoutColumn.title
-                }
-
-                if (layoutColumn.sorting) {
-                    column.sorter = true;
-                    column.sortOrder = false;
-                }
-
-                columns.push(column);
-            }
-
-            columns.push({
-                key: 'actions',
-                render(row) {
-                    return h(UsersTableRowMenu, {
-                        id: row.id
-                    }, { default: () => 'Действия' });
-                }
-            })
-
-            return columns;
-        });
+        const columns = computed(() => store.getters[`${tableName}Table/columns`]);
         const rows = computed(() => store.state[`${tableName}Table`].rows);
         const pagination = computed(() => store.state[`${tableName}Table`].pagination);
 
-        const { data: tableLayout, error: layoutError } = useSWRV(`/api/users/layout`, undefined, {
+        const { data: tableLayout, error: layoutError } = useSWRV(`/api/${tableName}/layout`, undefined, {
             revalidateOnFocus: false
         });
-        const { data: tableData, error: dataError, isValidating: loading, mutate: refresh } = useSWRV(() => `/api/users?page=${pagination.value.page}&pageSize=${pagination.value.pageSize}`, undefined, {
+        const { data: tableData, error: dataError, isValidating: loading, mutate: refresh } = useSWRV(() => buildQueryUrl(store.state[`${tableName}Table`]), undefined, {
             revalidateOnFocus: false
         });
 
@@ -171,9 +178,7 @@ export default defineComponent({
         });
 
         watch(() => store.state[`${tableName}Table`].pagination.page, () => refresh());
-        watch(() => store.state[`${tableName}Table`].pagination.pageSize, () => {
-            refresh();
-        });
+        watch(() => store.state[`${tableName}Table`].pagination.pageSize, () => refresh());
 
         return {
             columns,
@@ -187,6 +192,10 @@ export default defineComponent({
 
             handleSortChange(sort) {
                 console.log(sort)
+                store.commit(`${tableName}Table/setSorting`, {
+                    key: sort.columnKey,
+                    order: sort.order
+                });
             },
             handlePageChange(page) {
                 store.commit(`${tableName}Table/setPage`, page);
